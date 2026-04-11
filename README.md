@@ -70,16 +70,30 @@ This skips PyPI/PyTorch downloads entirely. It only:
 
 ### Step 3: Pack and transfer
 
+**On Linux/macOS** (recommended):
 ```bash
 cd ..
-tar czf hloc_ready.tar.gz hloc_weights_bundle
-# Transfer via USB to offline server
+tar czf hloc_ready.tar.gz --exclude='.git' hloc_weights_bundle
+# Transfer via USB or SFTP to offline server
 ```
+
+**IMPORTANT: On Windows**, do NOT create `.tar.gz` with Git Bash for large bundles — Git Bash's tar has known bugs with large archives containing `.git` folders, producing truncated/corrupt files that fail to extract. Instead:
+
+- **Option A (recommended):** Transfer the `hloc_weights_bundle/` **folder directly** via Bitvise SFTP, WinSCP, or FileZilla. SFTP clients handle per-file integrity automatically.
+- **Option B:** Use 7-Zip (GUI) to create the archive, not Git Bash tar.
+- **Option C:** Create the tar.gz **on the online Linux machine** (the one that ran PREPARE.sh), then transfer the single `.tar.gz` file.
 
 ### Step 4: Install on the offline server
 
+If you transferred a tar.gz:
 ```bash
 tar xzf hloc_ready.tar.gz
+cd hloc_weights_bundle
+bash INSTALL.sh
+```
+
+If you transferred the folder directly:
+```bash
 cd hloc_weights_bundle
 bash INSTALL.sh
 ```
@@ -104,14 +118,15 @@ No sudo needed for hloc install — everything goes into `~/hloc_env/` and `~/hl
 On an online computer with **both PyPI and GitHub access**:
 
 ```bash
-tar xzf hloc_weights_bundle.tar.gz
+# On Linux/macOS:
+git clone https://github.com/stooopid10-sys/hloc_weights_bundle.git
 cd hloc_weights_bundle
-bash PREPARE.sh        # downloads ~2 GB: wheels + hloc repo + LightGlue
+bash PREPARE.sh                                                  # downloads ~2 GB
 cd ..
-tar czf hloc_ready.tar.gz hloc_weights_bundle
+tar czf hloc_ready.tar.gz --exclude='.git' hloc_weights_bundle   # ~3 GB
 ```
 
-Transfer `hloc_ready.tar.gz` (~3 GB) to offline server, then:
+Transfer the resulting file (or the `hloc_weights_bundle/` folder directly — see Windows note above), then on offline server:
 
 ```bash
 tar xzf hloc_ready.tar.gz
