@@ -9,6 +9,7 @@
 #                        in wheels/, or will provide them separately)
 #   --skip-hloc-repo     Don't clone hloc repo (you already have it)
 #   --skip-lightglue     Don't build LightGlue wheel (you already have it)
+#   --skip-miniconda     Don't download Miniconda (you know target has Python 3.10+)
 #   --github-only        Equivalent to --skip-wheels (only fetches from GitHub)
 #
 # EXAMPLES:
@@ -34,6 +35,7 @@ set -e
 SKIP_WHEELS=false
 SKIP_HLOC_REPO=false
 SKIP_LIGHTGLUE=false
+SKIP_MINICONDA=false
 
 for arg in "$@"; do
     case $arg in
@@ -45,6 +47,9 @@ for arg in "$@"; do
             ;;
         --skip-lightglue)
             SKIP_LIGHTGLUE=true
+            ;;
+        --skip-miniconda)
+            SKIP_MINICONDA=true
             ;;
         -h|--help)
             grep '^#' "$0" | head -30
@@ -66,6 +71,7 @@ echo "Flags:"
 echo "  Download Python wheels:    $([ "$SKIP_WHEELS" = "true" ] && echo 'SKIP' || echo 'YES')"
 echo "  Clone hloc repo:           $([ "$SKIP_HLOC_REPO" = "true" ] && echo 'SKIP' || echo 'YES')"
 echo "  Build LightGlue wheel:     $([ "$SKIP_LIGHTGLUE" = "true" ] && echo 'SKIP' || echo 'YES')"
+echo "  Download Miniconda:        $([ "$SKIP_MINICONDA" = "true" ] && echo 'SKIP' || echo 'YES')"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -184,10 +190,10 @@ fi
 # ============================================
 if [ "$SKIP_LIGHTGLUE" = "true" ]; then
     echo ""
-    echo "[4/5] SKIPPED - LightGlue wheel build"
+    echo "[4/6] SKIPPED - LightGlue wheel build"
 else
     echo ""
-    echo "[4/5] Building LightGlue wheel from GitHub source..."
+    echo "[4/6] Building LightGlue wheel from GitHub source..."
     if ls "$WHEELS_DIR"/lightglue-*.whl 1> /dev/null 2>&1; then
         echo "  lightglue wheel already exists, skipping build"
     else
@@ -202,15 +208,44 @@ else
 fi
 
 # ============================================
+# Step 5: Download Miniconda installer (fallback for old Python)
+# ============================================
+MINICONDA_INSTALLER="$SCRIPT_DIR/Miniconda3-py312-Linux-x86_64.sh"
+if [ "$SKIP_MINICONDA" = "true" ]; then
+    echo ""
+    echo "[5/6] SKIPPED - Miniconda installer download"
+else
+    echo ""
+    echo "[5/6] Downloading Miniconda Python 3.12 installer (~140 MB)..."
+    if [ -f "$MINICONDA_INSTALLER" ]; then
+        echo "  Miniconda installer already exists, skipping"
+    else
+        # Pin to specific version that ships Python 3.12
+        MC_URL="https://repo.anaconda.com/miniconda/Miniconda3-py312_24.11.1-0-Linux-x86_64.sh"
+        if command -v wget &> /dev/null; then
+            wget -q -O "$MINICONDA_INSTALLER" "$MC_URL"
+        elif command -v curl &> /dev/null; then
+            curl -sL -o "$MINICONDA_INSTALLER" "$MC_URL"
+        else
+            echo "  ERROR: neither wget nor curl found"
+            exit 1
+        fi
+        echo "  Downloaded: $(du -h "$MINICONDA_INSTALLER" | cut -f1)"
+    fi
+    echo "  Done."
+fi
+
+# ============================================
 # Step 5: Summary
 # ============================================
 echo ""
-echo "[5/5] Bundle summary:"
+echo "[6/6] Bundle summary:"
 echo ""
 echo "  wheels/           : $(du -sh "$WHEELS_DIR" 2>/dev/null | cut -f1 || echo 'empty')"
 echo "  hloc_repo/        : $(du -sh "$HLOC_REPO_DIR" 2>/dev/null | cut -f1 || echo 'missing')"
 echo "  model_cache/      : $(du -sh "$SCRIPT_DIR/model_cache" | cut -f1)"
 echo "  superglue_weights/: $(du -sh "$SCRIPT_DIR/superglue_weights" 2>/dev/null | cut -f1 || echo 'n/a')"
+echo "  Miniconda:        $([ -f "$MINICONDA_INSTALLER" ] && du -h "$MINICONDA_INSTALLER" | cut -f1 || echo 'missing')"
 echo ""
 echo "  Total bundle size: $(du -sh "$SCRIPT_DIR" | cut -f1)"
 echo ""

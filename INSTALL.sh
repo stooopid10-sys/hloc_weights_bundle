@@ -55,20 +55,50 @@ fi
 echo ""
 
 # ============================================
-# Step 0: Prerequisites check
+# Step 0: Prerequisites check (+ Miniconda fallback if Python too old)
 # ============================================
 echo "[0/7] Checking prerequisites..."
 
+PYTHON_BIN="python3"
+
 if ! command -v python3 &> /dev/null; then
-    echo "  ERROR: python3 not found"
-    exit 1
+    echo "  System python3 not found."
+    PY_VER="none"
+else
+    PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    echo "  System Python: $PY_VER"
 fi
 
-PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-echo "  Python: $PY_VER"
-if [ "$(printf '%s\n' "3.10" "$PY_VER" | sort -V | head -n1)" != "3.10" ]; then
-    echo "  ERROR: Python 3.10+ required (you have $PY_VER)"
-    exit 1
+# Miniconda fallback: if system Python is missing or < 3.10, install bundled Miniconda
+PYTHON_OK=true
+if [ "$PY_VER" = "none" ]; then
+    PYTHON_OK=false
+elif [ "$(printf '%s\n' "3.10" "$PY_VER" | sort -V | head -n1)" != "3.10" ]; then
+    PYTHON_OK=false
+fi
+
+if [ "$PYTHON_OK" = "false" ]; then
+    echo "  System Python is too old or missing."
+    MINICONDA_INSTALLER="$SCRIPT_DIR/Miniconda3-py312-Linux-x86_64.sh"
+    if [ -f "$MINICONDA_INSTALLER" ]; then
+        if [ ! -d "$HOME/miniconda3" ]; then
+            echo "  Installing bundled Miniconda (Python 3.12) to ~/miniconda3..."
+            bash "$MINICONDA_INSTALLER" -b -p "$HOME/miniconda3"
+        else
+            echo "  ~/miniconda3 already exists, reusing."
+        fi
+        export PATH="$HOME/miniconda3/bin:$PATH"
+        PYTHON_BIN="$HOME/miniconda3/bin/python3"
+        PY_VER=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        echo "  Using Miniconda Python: $PY_VER"
+    else
+        echo "  ERROR: Python 3.10+ required (you have $PY_VER), and"
+        echo "         Miniconda installer not found at: $MINICONDA_INSTALLER"
+        echo ""
+        echo "  Fix: run PREPARE.sh on an online machine first to download Miniconda,"
+        echo "       or upgrade your system Python to 3.10+."
+        exit 1
+    fi
 fi
 
 if command -v nvidia-smi &> /dev/null; then
@@ -84,12 +114,12 @@ if [ "$OFFLINE_MODE" = "false" ] && ! command -v git &> /dev/null; then
 fi
 
 # ============================================
-# Step 1: venv
+# Step 1: venv (using chosen PYTHON_BIN)
 # ============================================
 echo ""
 echo "[1/7] Creating Python venv at ~/hloc_env..."
 if [ ! -d "$HOME/hloc_env" ]; then
-    python3 -m venv "$HOME/hloc_env"
+    "$PYTHON_BIN" -m venv "$HOME/hloc_env"
 fi
 source "$HOME/hloc_env/bin/activate"
 

@@ -1,0 +1,17 @@
+# Miniconda installer - too big for GitHub (141 MB > 100 MB limit)
+# Downloaded on-demand by PREPARE.sh
+Miniconda3-py312-Linux-x86_64.sh
+
+# PREPARE.sh output folders (generated, not committed)
+wheels/
+hloc_repo/
+
+# Accidental nesting from local tar extraction tests
+hloc_weights_bundle/
+
+# Local test output
+hloc_ready.tar.gz
+hloc_final.tar.gz
+
+# Temp files from atomic writes
+*.tmp.*
