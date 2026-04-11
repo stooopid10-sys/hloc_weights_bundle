@@ -83,7 +83,7 @@ mkdir -p "$WHEELS_DIR"
 # ============================================
 # Step 0: Check requirements
 # ============================================
-echo "[0/5] Checking requirements on this machine..."
+echo "[0/6] Checking requirements on this machine..."
 
 if ! command -v python3 &> /dev/null; then
     echo "  ERROR: python3 not found"
@@ -125,14 +125,14 @@ fi
 # ============================================
 if [ "$SKIP_WHEELS" = "true" ]; then
     echo ""
-    echo "[1/5] SKIPPED - PyTorch wheel download"
+    echo "[1/6] SKIPPED - PyTorch wheel download"
     if [ -z "$(ls -A "$WHEELS_DIR"/torch-*.whl 2>/dev/null)" ]; then
         echo "  WARNING: No torch wheel found in $WHEELS_DIR"
         echo "  Make sure you place the wheels there before running INSTALL.sh"
     fi
 else
     echo ""
-    echo "[1/5] Downloading PyTorch 2.7.1+cu126 wheels (~1.5 GB)..."
+    echo "[1/6] Downloading PyTorch 2.7.1+cu126 wheels (~1.5 GB)..."
     pip download -d "$WHEELS_DIR" \
         "torch==2.7.1+cu126" "torchvision==0.22.1+cu126" \
         --index-url https://download.pytorch.org/whl/cu126 2>&1 | tail -5
@@ -144,10 +144,10 @@ fi
 # ============================================
 if [ "$SKIP_WHEELS" = "true" ]; then
     echo ""
-    echo "[2/5] SKIPPED - scientific + hloc deps download"
+    echo "[2/6] SKIPPED - scientific + hloc deps download"
 else
     echo ""
-    echo "[2/5] Downloading scientific + hloc deps (~300 MB)..."
+    echo "[2/6] Downloading scientific + hloc deps (~300 MB)..."
     pip download -d "$WHEELS_DIR" --no-deps \
         numpy==2.4.4 opencv-python==4.13.0.92 scipy==1.17.1 h5py==3.16.0 pillow==12.2.0 \
         pycolmap==4.0.3 kornia==0.8.2 kornia_rs==0.1.10 gdown==5.2.1 tqdm==4.67.3 \
@@ -167,14 +167,14 @@ fi
 # ============================================
 if [ "$SKIP_HLOC_REPO" = "true" ]; then
     echo ""
-    echo "[3/5] SKIPPED - hloc repo clone"
+    echo "[3/6] SKIPPED - hloc repo clone"
     if [ ! -d "$HLOC_REPO_DIR" ]; then
         echo "  WARNING: $HLOC_REPO_DIR does not exist"
         echo "  Make sure you place the hloc repo there before running INSTALL.sh"
     fi
 else
     echo ""
-    echo "[3/5] Cloning hloc repository with submodules (~350 MB)..."
+    echo "[3/6] Cloning hloc repository with submodules (~350 MB)..."
     if [ -d "$HLOC_REPO_DIR" ]; then
         echo "  hloc_repo already exists, updating..."
         cd "$HLOC_REPO_DIR" && git pull && git submodule update --init --recursive
