@@ -1,53 +1,62 @@
 #!/bin/bash
 # INSTALL.sh - Install hloc on the target server.
 #
+# UNIFIED BUNDLE: This repo contains everything (hloc source, LightGlue wheel,
+# model weights). After running PREPARE.sh on an online PC (for Python wheels
+# and Miniconda), this script installs completely offline.
+#
 # WHAT THIS INSTALLS:
 #   - PyTorch 2.7.1+cu126 + torchvision + bundled CUDA libs
 #   - numpy, opencv, scipy, h5py, pillow         (scientific computing)
 #   - pycolmap, kornia, gdown, matplotlib, ...   (hloc direct dependencies)
-#   - hloc itself (cloned from GitHub + pip install -e .)
-#   - LightGlue (from GitHub)
-#   - Pre-downloaded model weights (NetVLAD, SuperGlue, LightGlue weights)
+#   - hloc (from bundled hloc_source/ folder)
+#   - LightGlue (from bundled lightglue_wheel/*.whl)
+#   - Pre-downloaded model weights (NetVLAD, SuperGlue, LightGlue)
 #
-# NOT installed (comes free with Python):
-#   - Python standard library (os, sys, pathlib, json, re, collections, ...)
-#   - ~200 built-in modules you don't need to install
-#
-# Only ~13 direct packages are installed explicitly. Pip automatically pulls
-# in the ~25 transitive deps (contourpy, cycler, requests, etc.).
+# FALLBACK: If system Python is older than 3.10, auto-installs bundled
+# Miniconda Python 3.12 to ~/miniconda3/ (no sudo needed).
 #
 # TWO MODES:
-#   1. ONLINE  mode: if wheels/ folder is empty, downloads from PyPI/GitHub
-#   2. OFFLINE mode: if wheels/ and hloc_repo/ exist (after running PREPARE.sh),
-#                    installs from local files only (no internet needed)
-#
-# To use offline mode:
-#   1. On an online computer, run:  bash PREPARE.sh
-#   2. Transfer the whole folder to the offline server
-#   3. On the offline server, run:  bash INSTALL.sh
+#   1. OFFLINE: wheels/ folder populated (from PREPARE.sh) -> uses local files
+#   2. ONLINE:  no wheels/ folder -> downloads from PyPI at install time
 
 set -e
 
 echo "============================================"
-echo "  hloc Installer"
+echo "  hloc Installer (unified bundle)"
 echo "============================================"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="$HOME/hloc_offline"
 WHEELS_DIR="$SCRIPT_DIR/wheels"
-HLOC_REPO_DIR="$SCRIPT_DIR/hloc_repo"
+HLOC_SOURCE="$SCRIPT_DIR/hloc_source"
+LIGHTGLUE_WHEEL_DIR="$SCRIPT_DIR/lightglue_wheel"
 
 # ============================================
-# Detect mode
+# Sanity check: bundled components must exist
+# ============================================
+if [ ! -d "$HLOC_SOURCE" ]; then
+    echo "ERROR: hloc_source/ folder not found in bundle."
+    echo "This bundle appears incomplete. Re-clone the repo."
+    exit 1
+fi
+
+if [ ! -d "$LIGHTGLUE_WHEEL_DIR" ] || [ -z "$(ls -A "$LIGHTGLUE_WHEEL_DIR"/*.whl 2>/dev/null)" ]; then
+    echo "ERROR: lightglue_wheel/*.whl not found in bundle."
+    echo "This bundle appears incomplete. Re-clone the repo."
+    exit 1
+fi
+
+# ============================================
+# Detect offline vs online mode
 # ============================================
 OFFLINE_MODE=false
-if [ -d "$WHEELS_DIR" ] && [ -d "$HLOC_REPO_DIR" ] && \
-   [ -n "$(ls -A "$WHEELS_DIR"/torch-*.whl 2>/dev/null)" ] && \
-   [ -f "$HLOC_REPO_DIR/setup.py" ]; then
+if [ -d "$WHEELS_DIR" ] && [ -n "$(ls -A "$WHEELS_DIR"/torch-*.whl 2>/dev/null)" ]; then
     OFFLINE_MODE=true
-    echo "Mode: OFFLINE (using local wheels + hloc_repo)"
+    echo "Mode: OFFLINE (using local wheels + bundled hloc_source)"
 else
-    echo "Mode: ONLINE (will download from PyPI + GitHub)"
+    echo "Mode: ONLINE (will download wheels from PyPI)"
     echo ""
     echo "  NOTE: For offline install, first run bash PREPARE.sh"
     echo "        on an online computer to download everything."
@@ -55,9 +64,9 @@ fi
 echo ""
 
 # ============================================
-# Step 0: Prerequisites check (+ Miniconda fallback if Python too old)
+# Step 0: Prerequisites check (+ Miniconda fallback)
 # ============================================
-echo "[0/7] Checking prerequisites..."
+echo "[0/6] Checking prerequisites..."
 
 PYTHON_BIN="python3"
 
@@ -69,7 +78,6 @@ else
     echo "  System Python: $PY_VER"
 fi
 
-# Miniconda fallback: if system Python is missing or < 3.10, install bundled Miniconda
 PYTHON_OK=true
 if [ "$PY_VER" = "none" ]; then
     PYTHON_OK=false
@@ -108,20 +116,16 @@ else
     echo "  WARNING: nvidia-smi not found - GPU may not be available"
 fi
 
-if [ "$OFFLINE_MODE" = "false" ] && ! command -v git &> /dev/null; then
-    echo "  ERROR: git not found (needed for online mode)"
-    exit 1
-fi
-
 # ============================================
-# Step 1: venv (using chosen PYTHON_BIN)
+# Step 1: Create venv
 # ============================================
 echo ""
-echo "[1/7] Creating Python venv at ~/hloc_env..."
-if [ ! -d "$HOME/hloc_env" ]; then
-    "$PYTHON_BIN" -m venv "$HOME/hloc_env"
+echo "[1/6] Creating Python venv at ~/hloc_env..."
+HLOC_ENV="$HOME/hloc_env"
+if [ ! -d "$HLOC_ENV" ]; then
+    "$PYTHON_BIN" -m venv "$HLOC_ENV"
 fi
-source "$HOME/hloc_env/bin/activate"
+source "$HLOC_ENV/bin/activate"
 
 if [ "$OFFLINE_MODE" = "true" ]; then
     pip install --no-index --find-links "$WHEELS_DIR" --upgrade pip wheel setuptools 2>&1 | tail -3
@@ -137,13 +141,12 @@ else
 fi
 
 # ============================================
-# Step 2: PyTorch
+# Step 2: PyTorch + CUDA
 # ============================================
 echo ""
-echo "[2/7] Installing PyTorch 2.7.1 + CUDA 12.6..."
+echo "[2/6] Installing PyTorch 2.7.1 + CUDA 12.6..."
 if [ "$OFFLINE_MODE" = "true" ]; then
-    pip install $PIP_ARGS --no-deps "torch==2.7.1+cu126" "torchvision==0.22.1+cu126" 2>&1 | tail -5
-    # Install torch's pure-Python deps from local wheels
+    pip install $PIP_ARGS --no-deps "torch==2.7.1+cu126" "torchvision==0.22.1+cu126" 2>&1 | tail -3
     pip install $PIP_ARGS --no-deps \
         filelock typing_extensions networkx jinja2 fsspec sympy mpmath markupsafe \
         nvidia-cuda-nvrtc-cu12 nvidia-cuda-runtime-cu12 nvidia-cuda-cupti-cu12 \
@@ -152,83 +155,61 @@ if [ "$OFFLINE_MODE" = "true" ]; then
         nvidia-nccl-cu12 nvidia-nvtx-cu12 nvidia-nvjitlink-cu12 nvidia-cufile-cu12 triton 2>&1 | tail -3
 else
     pip install "torch==2.7.1+cu126" "torchvision==0.22.1+cu126" \
-        --index-url https://download.pytorch.org/whl/cu126 2>&1 | tail -5
+        --index-url https://download.pytorch.org/whl/cu126 2>&1 | tail -3
 fi
 
 # ============================================
-# Step 3: Scientific libs
+# Step 3: Scientific + hloc dependencies
 # ============================================
 echo ""
-echo "[3/7] Installing numpy, opencv, scipy, h5py, pillow..."
+echo "[3/6] Installing scientific + hloc dependencies..."
 if [ "$OFFLINE_MODE" = "true" ]; then
     pip install $PIP_ARGS --no-deps numpy opencv-python scipy h5py pillow 2>&1 | tail -3
-else
-    pip install \
-        numpy==2.4.4 opencv-python==4.13.0.92 scipy==1.17.1 \
-        h5py==3.16.0 pillow==12.2.0 2>&1 | tail -3
-fi
-
-# ============================================
-# Step 4: hloc dependencies
-# ============================================
-echo ""
-echo "[4/7] Installing hloc dependencies..."
-if [ "$OFFLINE_MODE" = "true" ]; then
     pip install $PIP_ARGS --no-deps \
         pycolmap kornia kornia_rs gdown tqdm matplotlib plotly \
         beautifulsoup4 soupsieve requests urllib3 idna certifi charset_normalizer \
         PySocks contourpy cycler fonttools kiwisolver pyparsing \
-        python-dateutil six narwhals packaging 2>&1 | tail -5
+        python-dateutil six narwhals packaging 2>&1 | tail -3
 else
     pip install \
+        numpy==2.4.4 opencv-python==4.13.0.92 scipy==1.17.1 h5py==3.16.0 pillow==12.2.0 \
         pycolmap==4.0.3 kornia==0.8.2 kornia_rs==0.1.10 \
-        gdown==5.2.1 tqdm==4.67.3 matplotlib==3.10.8 plotly==6.7.0 2>&1 | tail -5
+        gdown==5.2.1 tqdm==4.67.3 matplotlib==3.10.8 plotly==6.7.0 2>&1 | tail -3
 fi
 
 # ============================================
-# Step 5: Clone/install hloc
+# Step 4: Install hloc from bundled source
 # ============================================
 echo ""
-echo "[5/7] Installing hloc..."
-if [ "$OFFLINE_MODE" = "true" ]; then
-    PIP_NO_INDEX=1 PIP_FIND_LINKS="$WHEELS_DIR" \
-        pip install $PIP_ARGS --no-deps "$HLOC_REPO_DIR" 2>&1 | tail -5
-    # Set up third_party module paths
-    SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
-    HLOC_TP="$HLOC_REPO_DIR/third_party"
-    cat > "$SITE_PACKAGES/hloc_third_party.pth" << PTHEOF
+echo "[4/6] Installing hloc from bundled hloc_source/..."
+PIP_NO_INDEX=$([ "$OFFLINE_MODE" = "true" ] && echo "1" || echo "") \
+PIP_FIND_LINKS=$([ "$OFFLINE_MODE" = "true" ] && echo "$WHEELS_DIR" || echo "") \
+    pip install $PIP_ARGS --no-deps "$HLOC_SOURCE" 2>&1 | tail -3
+
+# Set up third_party module paths (SuperGlue, R2D2, D2Net, etc.)
+SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
+HLOC_TP="$HLOC_SOURCE/third_party"
+cat > "$SITE_PACKAGES/hloc_third_party.pth" << PTHEOF
 $HLOC_TP
 $HLOC_TP/SuperGluePretrainedNetwork
 $HLOC_TP/d2net
 $HLOC_TP/deep-image-retrieval
 $HLOC_TP/r2d2
 PTHEOF
-    echo "  third_party .pth file created"
-else
-    if [ ! -d "$HOME/hloc_repo" ]; then
-        git clone --recursive https://github.com/cvg/Hierarchical-Localization.git "$HOME/hloc_repo"
-    fi
-    cd "$HOME/hloc_repo"
-    pip install -e . 2>&1 | tail -5
-    cd "$SCRIPT_DIR"
-fi
+echo "  third_party .pth file created"
 
 # ============================================
-# Step 6: LightGlue
+# Step 5: Install LightGlue from bundled wheel
 # ============================================
 echo ""
-echo "[6/7] Installing LightGlue..."
-if [ "$OFFLINE_MODE" = "true" ]; then
-    pip install $PIP_ARGS --no-deps lightglue 2>&1 | tail -3
-else
-    pip install "git+https://github.com/cvg/LightGlue.git" 2>&1 | tail -3
-fi
+echo "[5/6] Installing LightGlue from bundled wheel..."
+pip install --no-deps "$LIGHTGLUE_WHEEL_DIR"/lightglue-*.whl 2>&1 | tail -3
 
 # ============================================
-# Step 7: Copy pre-downloaded model weights
+# Step 6: Copy pre-downloaded model weights
 # ============================================
 echo ""
-echo "[7/7] Copying pre-downloaded model weights..."
+echo "[6/6] Copying pre-downloaded model weights..."
 
 mkdir -p "$HOME/.cache/torch/hub/netvlad"
 mkdir -p "$HOME/.cache/torch/hub/checkpoints"
@@ -236,8 +217,7 @@ mkdir -p "$HOME/.cache/torch/hub/checkpoints"
 NETVLAD_DIR="$SCRIPT_DIR/model_cache/torch/hub/netvlad"
 NETVLAD_FILE="$NETVLAD_DIR/VGG16-NetVLAD-Pitts30K.mat"
 
-# Reassemble NetVLAD from split parts if needed
-# (GitHub's 100MB file size limit forces the file to be stored in chunks.)
+# Reassemble NetVLAD from split parts if needed (GitHub 100MB limit workaround)
 if [ ! -f "$NETVLAD_FILE" ] && ls "$NETVLAD_DIR"/VGG16-NetVLAD-Pitts30K.mat.part_* 1> /dev/null 2>&1; then
     echo "  Reassembling NetVLAD weights from chunks..."
     cat "$NETVLAD_DIR"/VGG16-NetVLAD-Pitts30K.mat.part_* > "$NETVLAD_FILE"
@@ -247,8 +227,6 @@ fi
 if [ -f "$NETVLAD_FILE" ]; then
     cp "$NETVLAD_FILE" "$HOME/.cache/torch/hub/netvlad/"
     echo "  NetVLAD weights copied (528 MB)"
-else
-    echo "  WARNING: NetVLAD weights not found in bundle"
 fi
 
 if [ -f "$SCRIPT_DIR/model_cache/torch/hub/checkpoints/superpoint_lightglue_v0-1_arxiv.pth" ]; then
@@ -257,15 +235,11 @@ if [ -f "$SCRIPT_DIR/model_cache/torch/hub/checkpoints/superpoint_lightglue_v0-1
     echo "  LightGlue weights copied (45 MB)"
 fi
 
-# SuperGlue weights into repo submodule folder
-if [ "$OFFLINE_MODE" = "true" ]; then
-    SG_DIR="$HLOC_REPO_DIR/third_party/SuperGluePretrainedNetwork/models/weights"
-else
-    SG_DIR="$HOME/hloc_repo/third_party/SuperGluePretrainedNetwork/models/weights"
-fi
+# SuperGlue weights: overwrite/populate hloc_source's SuperGlue submodule folder
+SG_DIR="$HLOC_SOURCE/third_party/SuperGluePretrainedNetwork/models/weights"
 if [ -d "$SG_DIR" ] && [ -d "$SCRIPT_DIR/superglue_weights" ]; then
     cp "$SCRIPT_DIR/superglue_weights/"*.pth "$SG_DIR/" 2>/dev/null || true
-    echo "  SuperGlue weights copied to repo"
+    echo "  SuperGlue weights copied to hloc_source"
 fi
 
 # ============================================
@@ -297,4 +271,9 @@ echo ""
 echo "  To use hloc:"
 echo "    source ~/hloc_env/bin/activate"
 echo "    python3 your_script.py"
+echo ""
+echo "  Quick demo:"
+echo "    source ~/hloc_env/bin/activate"
+echo "    cd $HLOC_SOURCE"
+echo "    python3 demo.py  # (or adapt Sacre Coeur example from README)"
 echo "============================================"
